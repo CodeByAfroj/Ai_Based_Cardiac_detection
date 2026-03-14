@@ -1,7 +1,10 @@
+
 import numpy as np
 from src.data.load_data import load_records
 
 WINDOW_SIZE = 180
+
+VALID_CLASSES = ["N","A","V","L","R"]
 
 def create_dataset():
 
@@ -23,8 +26,14 @@ def create_dataset():
             beat = signal[start:end]
 
             if len(beat) == WINDOW_SIZE:
+
+                label = symbols[i]
+
+                if label not in VALID_CLASSES:
+                    continue
+
                 X.append(beat)
-                y.append(symbols[i])
+                y.append(label)
 
     X = np.array(X)
     y = np.array(y)

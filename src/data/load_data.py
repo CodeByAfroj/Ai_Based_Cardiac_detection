@@ -1,3 +1,4 @@
+
 import wfdb
 import os
 
@@ -7,17 +8,34 @@ def load_records():
 
     records = []
 
-    for file in os.listdir(DATA_PATH):
+    files = sorted(os.listdir(DATA_PATH))
+
+    print("Loading ECG records...")
+
+    for file in files:
 
         if file.endswith(".dat"):
 
             record_name = file.split(".")[0]
 
-            record = wfdb.rdrecord(f"{DATA_PATH}/{record_name}")
-            annotation = wfdb.rdann(f"{DATA_PATH}/{record_name}", "atr")
+            try:
 
-            signal = record.p_signal[:,0]
+                record = wfdb.rdrecord(f"{DATA_PATH}/{record_name}")
+                annotation = wfdb.rdann(f"{DATA_PATH}/{record_name}", "atr")
 
-            records.append((signal, annotation.sample, annotation.symbol))
+                signal = record.p_signal[:,0]
+
+                r_peaks = annotation.sample
+                symbols = annotation.symbol
+
+                records.append((signal, r_peaks, symbols))
+
+                print(f"Loaded record {record_name}")
+
+            except Exception as e:
+
+                print(f"Error loading {record_name}: {e}")
+
+    print("Total records loaded:", len(records))
 
     return records

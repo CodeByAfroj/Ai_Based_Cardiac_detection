@@ -3,7 +3,7 @@ import tensorflow as tf
 import joblib
 
 # Load model
-model = tf.keras.models.load_model("models/cardiac_model.h5")
+model = tf.keras.models.load_model("models/cardiac_model.keras")
 
 # Load encoder
 encoder = joblib.load("models/label_encoder.pkl")

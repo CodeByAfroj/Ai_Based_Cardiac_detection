@@ -54,6 +54,7 @@ function App() {
       });
 
       const data = await response.json();
+      console.log("API response:", data);
 
       setHeartbeat(data.heartbeat || "Unknown");
       setBpm(data.bpm || "--");

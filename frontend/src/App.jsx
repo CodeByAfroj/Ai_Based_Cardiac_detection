@@ -1,186 +1,281 @@
-import React, { useState, useEffect } from "react";
-import { Line } from "react-chartjs-2";
-import "chart.js/auto";
+
+import ECGChart from "./components/ECGChart";
+import MetricCard from "./components/MetricCard";
+import Recommendation from "./components/RecommendationPanel";
+import Hospitals from "./components/HospitalPanel";
+import HeartSection from "./components/HeartSection";
+
+import { generateReport } from "./services/reportGenerator";
+import { getHeartRegion } from "./utils/HeartMapping";
+
+import { useState, useEffect } from "react";
+import axios from "axios";
 
 function App() {
 
-  const [ecgData, setEcgData] = useState([]);
-  const [heartbeat, setHeartbeat] = useState("Waiting...");
-  const [bpm, setBpm] = useState("--");
-  const [hrv, setHrv] = useState("--");
-  const [risk, setRisk] = useState("--");
+  const [signal, setSignal] = useState([]);
+  const [heartbeat, setHeartbeat] = useState("-");
+  const [bpm, setBpm] = useState("-");
+  const [hrv, setHrv] = useState("-");
+  const [risk, setRisk] = useState("Low");
 
-  // Fake ECG generator (P-QRS-T pattern)
+  const [history, setHistory] = useState([]);
+  const [reports, setReports] = useState([]);
+
+  const [region, setRegion] = useState("normal");
+
+  // TIMER STATE
+  const [seconds, setSeconds] = useState(0);
+
+  // -----------------------------
+  // Fake ECG generator
+  // -----------------------------
   const generateSignal = () => {
 
-    let signal = [];
+    let data = [];
 
     for (let i = 0; i < 180; i++) {
 
-      let value = Math.random() * 0.02;
+      let value = Math.sin(i / 10) + Math.random() * 0.05;
 
-    if(i==80) value += 1; // R peak
-      signal.push(value);
+      if (i === 80) value = -0.4;
+      if (i === 82) value = 1.2;
+      if (i === 84) value = -0.3;
+
+      data.push(value);
     }
 
-
-
-      // if (i >= 40 && i <= 50)
-      //   value += Math.sin((i - 40) / 10 * Math.PI) * 0.15;
-
-      // if (i === 80) value = -0.25;
-      // if (i === 82) value = 1.2;
-      // if (i === 84) value = -0.35;
-
-      // if (i >= 110 && i <= 125)
-      //   value += Math.sin((i - 110) / 15 * Math.PI) * 0.35;
-
-
-    return signal;
+    return data;
   };
 
+  // -----------------------------
+  // REPORT GENERATION
+  // -----------------------------
+  useEffect(() => {
+
+    let duration = null;
+
+    if (history.length === 60) duration = "1 Minute";
+    if (history.length === 300) duration = "5 Minutes";
+    if (history.length === 600) duration = "10 Minutes";
+
+    if (duration) {
+
+      const result = generateReport(history, duration);
+
+      setReports(prev => [...prev, result]);
+
+      const counts = result.counts;
+
+      let abnormalBeat = "N";
+      let max = 0;
+
+      Object.entries(counts).forEach(([beat, count]) => {
+
+        if (beat !== "N" && count > max) {
+
+          max = count;
+          abnormalBeat = beat;
+
+        }
+
+      });
+
+      const affectedRegion = getHeartRegion(abnormalBeat);
+
+      setRegion(affectedRegion);
+
+    }
+
+  }, [history]);
+
+  // -----------------------------
+  // FETCH PREDICTION
+  // -----------------------------
   const fetchPrediction = async () => {
+
+    const ecg = generateSignal();
 
     try {
 
-      const signal = generateSignal();
+      const res = await axios.post(
+        "http://127.0.0.1:8000/predict",
+        { signal: ecg }
+      );
 
-      const response = await fetch("http://127.0.0.1:8000/predict", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ signal })
-      });
+      const beat = res.data.heartbeat;
 
-      const data = await response.json();
-      console.log("API response:", data);
+      setHeartbeat(beat);
+      setBpm(res.data.bpm);
+      setHrv(res.data.hrv);
+      setRisk(res.data.risk);
 
-      setHeartbeat(data.heartbeat || "Unknown");
-      setBpm(data.bpm || "--");
-      setHrv(data.hrv || "--");
-      setRisk(data.risk || "--");
+      setSignal(ecg);
 
-      setEcgData(signal);
+      setHistory(prev => [...prev, beat]);
 
-    } catch (error) {
-      console.error("API error:", error);
+    } catch (err) {
+
+      console.log("API error");
+
     }
+
   };
 
+  // -----------------------------
+  // MAIN INTERVAL
+  // -----------------------------
   useEffect(() => {
 
-    const interval = setInterval(fetchPrediction, 1000);
+    const interval = setInterval(() => {
+
+      fetchPrediction();
+      setSeconds(prev => prev + 1);
+
+    }, 1000);
 
     return () => clearInterval(interval);
 
   }, []);
 
-  // Heartbeat color logic
-  let heartbeatColor = "white";
+  // -----------------------------
+  // NEXT REPORT COUNTDOWN
+  // -----------------------------
+  const nextReport = () => {
 
-  if (heartbeat === "N") heartbeatColor = "#00ff90";
-  else if (heartbeat === "A") heartbeatColor = "#ffae00";
-  else if (heartbeat === "V") heartbeatColor = "#ff3b3b";
-  else if (heartbeat === "!") heartbeatColor = "#888";
+    if (seconds < 60) return 60 - seconds;
+    if (seconds < 300) return 300 - seconds;
+    if (seconds < 600) return 600 - seconds;
 
-  // Risk color
-  let riskColor = "#00ff90";
+    return 0;
 
-  if (risk === "Medium") riskColor = "#ffae00";
-  if (risk === "High") riskColor = "#ff3b3b";
-
-  const chartData = {
-    labels: ecgData.map((_, i) => i),
-    datasets: [
-      {
-        label: "ECG Signal",
-        data: ecgData,
-        borderColor: "#00ff90",
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.3
-      }
-    ]
-  };
-
-  const chartOptions = {
-    animation: false,
-    plugins: { legend: { display: false } },
-    scales: {
-      x: { display: false },
-      y: { display: false }
-    }
   };
 
   return (
 
-    <div style={{
-      minHeight: "100vh",
-      background: "#0a0a0a",
-      color: "white",
-      fontFamily: "Arial",
-      padding: "40px"
-    }}>
+    <div className="min-h-screen bg-gray-100 p-10">
 
-      <h1 style={{
-        textAlign: "center",
-        marginBottom: "40px",
-        letterSpacing: "2px"
-      }}>
-        AI Cardiac Monitor
+      <h1 className="text-4xl font-bold text-center mb-10">
+        AI Cardiac Monitoring Dashboard
       </h1>
 
-      <div style={{
-        display: "flex",
-        justifyContent: "space-around",
-        marginBottom: "40px",
-        flexWrap: "wrap",
-        gap: "20px"
-      }}>
+      <div className="max-w-6xl mx-auto space-y-8">
 
-        <div style={cardStyle}>
-          <h3>Heartbeat</h3>
-          <h2 style={{ color: heartbeatColor }}>{heartbeat}</h2>
+        {/* TIMER PANEL */}
+
+        <div className="bg-white rounded-xl shadow-lg p-6">
+
+          <div className="flex justify-between items-center">
+
+            <h2 className="text-lg font-semibold">
+              Monitoring Time
+            </h2>
+
+            <div className="text-2xl font-bold text-blue-600">
+              {Math.floor(seconds / 60)}m {seconds % 60}s
+            </div>
+
+          </div>
+
+          <p className="text-gray-600 mt-2">
+            Next report in: {Math.floor(nextReport() / 60)}m {nextReport() % 60}s
+          </p>
+
         </div>
 
-        <div style={cardStyle}>
-          <h3>BPM</h3>
-          <h2>{bpm}</h2>
+        {/* ECG CHART */}
+
+        <ECGChart signal={signal} />
+
+        {/* METRICS */}
+
+        <div className="grid grid-cols-4 gap-6">
+
+          <MetricCard title="Heartbeat" value={heartbeat} color="text-blue-500" />
+
+          <MetricCard title="BPM" value={bpm} color="text-green-500" />
+
+          <MetricCard title="HRV" value={hrv} color="text-purple-500" />
+
+          <MetricCard
+            title="Risk"
+            value={risk}
+            color={
+              risk === "Low"
+                ? "text-green-500"
+                : risk === "Medium"
+                ? "text-yellow-500"
+                : "text-red-500"
+            }
+          />
+
         </div>
 
-        <div style={cardStyle}>
-          <h3>HRV</h3>
-          <h2>{hrv}</h2>
+        {/* RECOMMENDATION + HOSPITAL */}
+
+        <div className="grid grid-cols-2 gap-6">
+
+          <Recommendation risk={risk} />
+
+          <Hospitals />
+
         </div>
 
-        <div style={cardStyle}>
-          <h3>Risk Level</h3>
-          <h2 style={{ color: riskColor }}>{risk}</h2>
-        </div>
+        {/* HEART VISUALIZATION */}
 
-      </div>
+        {reports.length > 0 && (
 
-      <div style={{
-        background: "#111",
-        padding: "20px",
-        borderRadius: "10px",
-        boxShadow: "0 0 20px #00ff9040"
-      }}>
-        <Line data={chartData} options={chartOptions} />
+          <div className="bg-white rounded-xl shadow-lg p-6">
+
+            <h2 className="text-2xl font-bold mb-4">
+              AI Heart Visualization
+            </h2>
+
+            <p className="mb-4 text-gray-600">
+              Highlighted region shows where abnormal electrical activity is detected.
+            </p>
+
+            <HeartSection region={region} />
+
+          </div>
+
+        )}
+
+        {/* REPORTS */}
+
+        {reports.map((report, index) => (
+
+          <div key={index} className="bg-white shadow-lg rounded-xl p-6">
+
+            <h2 className="text-2xl font-bold mb-4">
+              {report.duration} Heart Report
+            </h2>
+
+            <p>Total Beats Analyzed: {report.total}</p>
+
+            <div className="grid grid-cols-5 gap-4 mt-4">
+
+              <div>Normal: {report.counts.N}</div>
+              <div>Atrial: {report.counts.A}</div>
+              <div>Ventricular: {report.counts.V}</div>
+              <div>LBBB: {report.counts.L}</div>
+              <div>RBBB: {report.counts.R}</div>
+
+            </div>
+
+            <p className="mt-6 text-xl font-semibold text-red-500">
+              Conclusion: {report.conclusion}
+            </p>
+
+          </div>
+
+        ))}
+
       </div>
 
     </div>
   );
 }
 
-const cardStyle = {
-  background: "#111",
-  padding: "20px",
-  borderRadius: "10px",
-  minWidth: "150px",
-  textAlign: "center",
-  boxShadow: "0 0 10px #00ff9040"
-};
-
 export default App;
+

@@ -56,7 +56,7 @@ Ai_Based_Cardiac_detection/
 The dataset contains medical attributes such as:
 
 - Age  
-- Sex  
+- Gender  
 - Chest pain type  
 - Resting blood pressure  
 - Cholesterol level  

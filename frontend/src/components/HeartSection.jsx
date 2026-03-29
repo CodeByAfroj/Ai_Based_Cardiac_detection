@@ -29,7 +29,7 @@ export default function HeartSection({ region }) {
               cy="230"
               rx="90"
               ry="90"
-              fill="red"
+              fill="orange"
               opacity="0.45"
             />
           )}
